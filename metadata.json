@@ -1,0 +1,6 @@
+{
+  "name": "NPM Package Playground",
+  "description": "A modern, minimal, professional local-only app for testing npm packages directly in the browser with live package search, dynamic ESM runner, and auto-suggest code functions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "NPM Package Playground",
+  "short_name": "npmPlay",
+  "description": "In-browser playground to search, auto-suggest code, and test any npm package directly.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
