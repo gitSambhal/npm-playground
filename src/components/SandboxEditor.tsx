@@ -17,6 +17,7 @@ import { executeCodeInBrowser } from '../utils/codeRunner';
 import { formatJavaScriptCode } from '../utils/formatter';
 import { EDITOR_THEMES } from '../utils/themes';
 import Editor from '@monaco-editor/react';
+import Markdown from 'react-markdown';
 import confetti from 'canvas-confetti';
 
 interface SandboxEditorProps {
@@ -553,10 +554,10 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
 
             {/* README Tab */}
             {rightTab === 'readme' && (
-              <div className={`space-y-2 font-sans text-xs leading-relaxed ${darkMode ? 'text-zinc-300' : 'text-slate-700'}`}>
+              <div className={`space-y-4 font-sans text-xs leading-relaxed ${darkMode ? 'text-zinc-300' : 'text-slate-700'}`}>
                 {readme ? (
-                  <div className={`prose max-w-none whitespace-pre-wrap ${darkMode ? 'prose-invert text-zinc-300' : 'text-slate-800'}`}>
-                    {readme}
+                  <div className={`prose max-w-none ${darkMode ? 'prose-invert text-zinc-300' : 'text-slate-800'}`}>
+                    <Markdown>{readme}</Markdown>
                   </div>
                 ) : (
                   <div className={`text-center py-16 font-mono ${darkMode ? 'text-zinc-600' : 'text-slate-400'}`}>
