@@ -4,20 +4,26 @@
  */
 
 import { ConsoleMessage, ExecutionResult } from '../types';
+import { parsePackagePath } from './npmRegistry';
 
 export function setupImportMap(packageName: string, version?: string) {
   const existing = document.getElementById('dynamic-sandbox-importmap');
   if (existing) {
     existing.remove();
   }
-  const cdnUrl = `https://esm.sh/${packageName}${version ? `@${version}` : ''}`;
+  const parsed = parsePackagePath(packageName);
+  const fullCdnUrl = `https://esm.sh/${parsed.fullPath}${version ? `@${version}` : ''}`;
+  const baseCdnUrl = `https://esm.sh/${parsed.basePackage}${version ? `@${version}` : ''}`;
+
   const script = document.createElement('script');
   script.type = 'importmap';
   script.id = 'dynamic-sandbox-importmap';
   script.textContent = JSON.stringify({
     imports: {
-      [packageName]: cdnUrl,
-      [packageName.toLowerCase()]: cdnUrl,
+      [parsed.fullPath]: fullCdnUrl,
+      [parsed.fullPath.toLowerCase()]: fullCdnUrl,
+      [parsed.basePackage]: baseCdnUrl,
+      [parsed.basePackage.toLowerCase()]: baseCdnUrl,
     }
   });
   document.head.appendChild(script);

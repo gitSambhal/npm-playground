@@ -74,8 +74,8 @@ export const SearchExplore: React.FC<SearchExploreProps> = ({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search packages (e.g. lodash-es, axios, uuid, date-fns, zod)..."
-              className="w-full bg-transparent px-4 py-4 text-sm sm:text-base text-white placeholder-zinc-500 focus:outline-none"
+              placeholder="Search packages or subpaths (e.g. axios, axios/lib/core/settle, lodash/cloneDeep)..."
+              className={`w-full bg-transparent px-4 py-4 text-sm sm:text-base focus:outline-none ${darkMode ? 'text-white placeholder-zinc-500' : 'text-slate-900 placeholder-slate-400'}`}
             />
             {query && (
               <button

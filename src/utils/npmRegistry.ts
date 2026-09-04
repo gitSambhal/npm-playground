@@ -29,17 +29,56 @@ export async function searchNpmPackages(query: string, size = 12): Promise<NpmPa
   }
 }
 
+export interface ParsedPackagePath {
+  fullPath: string;
+  basePackage: string;
+  subpath?: string;
+}
+
+export function parsePackagePath(input: string): ParsedPackagePath {
+  const trimmed = input.trim();
+  if (!trimmed) return { fullPath: '', basePackage: '' };
+
+  if (trimmed.startsWith('@')) {
+    const parts = trimmed.split('/');
+    if (parts.length >= 2) {
+      const basePackage = `${parts[0]}/${parts[1]}`;
+      const subpath = parts.slice(2).join('/');
+      return {
+        fullPath: trimmed,
+        basePackage,
+        subpath: subpath || undefined,
+      };
+    }
+  } else {
+    const parts = trimmed.split('/');
+    if (parts.length >= 1) {
+      const basePackage = parts[0];
+      const subpath = parts.slice(1).join('/');
+      return {
+        fullPath: trimmed,
+        basePackage,
+        subpath: subpath || undefined,
+      };
+    }
+  }
+  return { fullPath: trimmed, basePackage: trimmed };
+}
+
 export async function fetchPackageDetails(packageName: string): Promise<NpmPackageDetails | null> {
   if (!packageName.trim()) return null;
+  const parsed = parsePackagePath(packageName);
+  const basePkg = parsed.basePackage;
+  if (!basePkg) return null;
   try {
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`);
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(basePkg)}`);
     if (!res.ok) {
       // Fallback: try unpkg package.json
-      const unpkgRes = await fetch(`https://unpkg.com/${packageName}/package.json`);
+      const unpkgRes = await fetch(`https://unpkg.com/${basePkg}/package.json`);
       if (unpkgRes.ok) {
         const unpkgData = await unpkgRes.json();
         return {
-          name: unpkgData.name,
+          name: parsed.fullPath,
           version: unpkgData.version,
           description: unpkgData.description || '',
           latestVersion: unpkgData.version,
@@ -60,7 +99,7 @@ export async function fetchPackageDetails(packageName: string): Promise<NpmPacka
     const allVersions = Object.keys(data.versions || {}).reverse();
 
     return {
-      name: data.name,
+      name: parsed.fullPath,
       version: latestVersion,
       description: data.description || latestMeta.description || '',
       latestVersion,
@@ -81,13 +120,15 @@ export async function fetchPackageDetails(packageName: string): Promise<NpmPacka
 }
 
 export async function fetchPackageReadme(packageName: string, version?: string): Promise<string> {
+  const parsed = parsePackagePath(packageName);
+  const basePkg = parsed.basePackage;
   try {
-    const res = await fetch(`https://cdn.jsdelivr.net/npm/${packageName}${version ? `@${version}` : ''}/README.md`);
+    const res = await fetch(`https://cdn.jsdelivr.net/npm/${basePkg}${version ? `@${version}` : ''}/README.md`);
     if (res.ok) {
       return await res.text();
     }
     // Fallback to unpkg
-    const unpkgRes = await fetch(`https://unpkg.com/${packageName}${version ? `@${version}` : ''}/README.md`);
+    const unpkgRes = await fetch(`https://unpkg.com/${basePkg}${version ? `@${version}` : ''}/README.md`);
     if (unpkgRes.ok) {
       return await unpkgRes.text();
     }
