@@ -49,52 +49,40 @@ export const SearchExplore: React.FC<SearchExploreProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-12">
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-8">
       
-      {/* Hero Header */}
-      <div className="text-center space-y-4 py-8">
-        <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono">
-          <Sparkles className="w-3.5 h-3.5 animate-spin" />
-          <span>Instant In-Browser ESM Sandbox & Auto-Suggest</span>
-        </div>
-        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white">
-          Test any <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-indigo-400 to-emerald-400">NPM Package</span> instantly
-        </h1>
-        <p className="text-zinc-400 text-sm sm:text-base max-w-2xl mx-auto">
-          Search the entire NPM registry, test modules in real-time using browser ES modules without build setups, and let AI-powered auto-suggest generate executable test snippets.
-        </p>
-
-        {/* Main Search Bar */}
-        <div className="max-w-2xl mx-auto pt-4">
-          <form onSubmit={handleDirectSubmit} className="relative flex items-center shadow-2xl shadow-indigo-500/10 rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-900/90 focus-within:border-indigo-500 transition">
-            <div className="pl-4 text-zinc-400">
-              <Search className="w-5 h-5" />
-            </div>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search packages or subpaths (e.g. axios, axios/lib/core/settle, lodash/cloneDeep)..."
-              className={`w-full bg-transparent px-4 py-4 text-sm sm:text-base focus:outline-none ${darkMode ? 'text-white placeholder-zinc-500' : 'text-slate-900 placeholder-slate-400'}`}
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="pr-4 text-xs text-zinc-500 hover:text-white"
-              >
-                Clear
-              </button>
-            )}
+      {/* Compact Minimal Search Bar */}
+      <div className="max-w-2xl mx-auto">
+        <form onSubmit={handleDirectSubmit} className={`relative flex items-center rounded-xl overflow-hidden border transition ${
+          darkMode ? 'bg-zinc-900 border-zinc-800 focus-within:border-indigo-500' : 'bg-white border-slate-200 shadow-sm focus-within:border-indigo-500'
+        }`}>
+          <div className="pl-4 text-zinc-400">
+            <Search className="w-4 h-4" />
+          </div>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search npm packages or subpaths (e.g. axios, axios/lib/core/settle, lodash)..."
+            className={`w-full bg-transparent px-3.5 py-3 text-sm focus:outline-none ${darkMode ? 'text-white placeholder-zinc-500' : 'text-slate-900 placeholder-slate-400'}`}
+          />
+          {query && (
             <button
-              type="submit"
-              className="m-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs sm:text-sm transition flex items-center space-x-1.5"
+              type="button"
+              onClick={() => setQuery('')}
+              className="pr-3 text-xs text-zinc-500 hover:text-zinc-300"
             >
-              <span>Test</span>
-              <ArrowUpRight className="w-4 h-4" />
+              Clear
             </button>
-          </form>
-        </div>
+          )}
+          <button
+            type="submit"
+            className="m-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition flex items-center space-x-1"
+          >
+            <span>Test</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </form>
       </div>
 
       {/* Search Results Grid (if query active) */}

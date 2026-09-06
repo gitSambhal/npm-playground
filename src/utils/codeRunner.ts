@@ -1,5 +1,5 @@
 /**
- * Sandboxed Code Execution Runner (Browser-side ESM execution)
+ * Sandboxed Code Execution Runner (Browser-side ESM execution with multi-file support)
  * Developer: Suhail Akhtar (https://suhail.top)
  */
 
@@ -30,7 +30,7 @@ export function setupImportMap(packageName: string, version?: string) {
 }
 
 export async function executeCodeInBrowser(
-  code: string,
+  filesOrCode: Array<{ name: string; content: string; language: string }> | string,
   previewContainer: HTMLElement | null,
   packageName?: string,
   version?: string
@@ -38,10 +38,27 @@ export async function executeCodeInBrowser(
   const logs: ConsoleMessage[] = [];
   const startTime = performance.now();
 
+  const files = typeof filesOrCode === 'string' 
+    ? [{ name: 'index.js', content: filesOrCode, language: 'javascript' }]
+    : filesOrCode;
+
   // Setup import map if package name provided
   if (packageName) {
     setupImportMap(packageName, version);
   }
+
+  // Setup Node.js runtime environment shims
+  (window as any).process = (window as any).process || {
+    env: { NODE_ENV: 'development' },
+    version: 'v18.16.0',
+    platform: 'browser',
+    nextTick: (cb: Function) => setTimeout(cb, 0),
+    cwd: () => '/',
+    pid: 1,
+  };
+  (window as any).__dirname = '/';
+  (window as any).__filename = '/index.js';
+  (window as any).global = window;
 
   // Override console methods to capture all outputs
   const originalLog = console.log;
@@ -84,21 +101,56 @@ export async function executeCodeInBrowser(
   let success = true;
   let errorDetails: { message: string; stack?: string } | undefined = undefined;
 
+  const blobUrls: string[] = [];
+
   try {
     // If preview container is provided, clear it before execution
     if (previewContainer) {
       previewContainer.innerHTML = '';
     }
 
-    // Transform code to Blob URL for dynamic ES module import
-    const blob = new Blob([code], { type: 'text/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
+    const jsFiles = files.length > 0 ? files : [{ name: 'index.js', content: '', language: 'javascript' }];
+    const urlMap: Record<string, string> = {};
+
+    // 1. First pass: generate blob URLs for all files
+    jsFiles.forEach(file => {
+      const blob = new Blob([file.content], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      blobUrls.push(url);
+      urlMap[file.name] = url;
+      const baseName = file.name.replace(/\.[^/.]+$/, '');
+      urlMap[baseName] = url;
+    });
+
+    // 2. Second pass: rewrite relative imports and update blobs
+    jsFiles.forEach(file => {
+      let content = file.content;
+      Object.keys(urlMap).forEach(fileName => {
+        const targetUrl = urlMap[fileName];
+        content = content.replace(new RegExp(`from\\s+['"]\\.\\/${fileName}['"]`, 'g'), `from '${targetUrl}'`);
+        content = content.replace(new RegExp(`from\\s+['"]\\.\\/${fileName.replace(/\.[^/.]+$/, '')}['"]`, 'g'), `from '${targetUrl}'`);
+        content = content.replace(new RegExp(`import\\s*\\(\\s*['"]\\.\\/${fileName}['"]\\s*\\)`, 'g'), `import('${targetUrl}')`);
+        content = content.replace(new RegExp(`import\\s*\\(\\s*['"]\\.\\/${fileName.replace(/\.[^/.]+$/, '')}['"]\\s*\\)`, 'g'), `import('${targetUrl}')`);
+      });
+
+      const blob = new Blob([content], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      blobUrls.push(url);
+      urlMap[file.name] = url;
+    });
+
+    const entryFile = jsFiles.find(f => f.name === 'index.js') || jsFiles.find(f => f.name.endsWith('.js') || f.name.endsWith('.ts') || f.name.endsWith('.tsx') || f.name.endsWith('.jsx')) || jsFiles[0];
+    if (!entryFile) {
+      throw new Error('No execution file found in project.');
+    }
+
+    const entryUrl = urlMap[entryFile.name];
 
     try {
-      const module = await import(/* @vite-ignore */ blobUrl);
+      const module = await import(/* @vite-ignore */ entryUrl);
       returnValue = module.default ?? module;
     } finally {
-      URL.revokeObjectURL(blobUrl);
+      // Clean up in outer finally
     }
   } catch (err: any) {
     success = false;
@@ -114,6 +166,8 @@ export async function executeCodeInBrowser(
       stack: err.stack,
     });
   } finally {
+    blobUrls.forEach(url => URL.revokeObjectURL(url));
+
     // Restore original console
     console.log = originalLog;
     console.info = originalInfo;

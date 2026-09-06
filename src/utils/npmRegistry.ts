@@ -70,53 +70,69 @@ export async function fetchPackageDetails(packageName: string): Promise<NpmPacka
   const parsed = parsePackagePath(packageName);
   const basePkg = parsed.basePackage;
   if (!basePkg) return null;
+
+  // 1. Try unpkg package.json first
+  try {
+    const unpkgRes = await fetch(`https://unpkg.com/${basePkg}/package.json`);
+    if (unpkgRes.ok) {
+      const unpkgData = await unpkgRes.json();
+      return {
+        name: parsed.fullPath,
+        version: unpkgData.version || 'latest',
+        description: unpkgData.description || '',
+        latestVersion: unpkgData.version || 'latest',
+        versions: unpkgData.version ? [unpkgData.version] : ['latest'],
+        homepage: unpkgData.homepage,
+        repositoryUrl: typeof unpkgData.repository === 'string' ? unpkgData.repository : unpkgData.repository?.url,
+        license: unpkgData.license,
+        author: unpkgData.author,
+        keywords: unpkgData.keywords || [],
+        dependencies: unpkgData.dependencies,
+      };
+    }
+  } catch (e) {
+    console.warn('unpkg package.json fallback failed:', e);
+  }
+
+  // 2. Try npm registry
   try {
     const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(basePkg)}`);
-    if (!res.ok) {
-      // Fallback: try unpkg package.json
-      const unpkgRes = await fetch(`https://unpkg.com/${basePkg}/package.json`);
-      if (unpkgRes.ok) {
-        const unpkgData = await unpkgRes.json();
-        return {
-          name: parsed.fullPath,
-          version: unpkgData.version,
-          description: unpkgData.description || '',
-          latestVersion: unpkgData.version,
-          versions: [unpkgData.version],
-          homepage: unpkgData.homepage,
-          repositoryUrl: typeof unpkgData.repository === 'string' ? unpkgData.repository : unpkgData.repository?.url,
-          license: unpkgData.license,
-          author: unpkgData.author,
-          keywords: unpkgData.keywords || [],
-          dependencies: unpkgData.dependencies,
-        };
-      }
-      return null;
-    }
-    const data = await res.json();
-    const latestVersion = data['dist-tags']?.latest || Object.keys(data.versions || {}).pop() || 'latest';
-    const latestMeta = data.versions?.[latestVersion] || {};
-    const allVersions = Object.keys(data.versions || {}).reverse();
+    if (res.ok) {
+      const data = await res.json();
+      const latestVersion = data['dist-tags']?.latest || Object.keys(data.versions || {}).pop() || 'latest';
+      const latestMeta = data.versions?.[latestVersion] || {};
+      const allVersions = Object.keys(data.versions || {}).reverse();
 
-    return {
-      name: parsed.fullPath,
-      version: latestVersion,
-      description: data.description || latestMeta.description || '',
-      latestVersion,
-      versions: allVersions.length > 0 ? allVersions : [latestVersion],
-      homepage: data.homepage || latestMeta.homepage,
-      repositoryUrl: typeof data.repository === 'string' ? data.repository : data.repository?.url,
-      license: data.license || latestMeta.license || 'MIT',
-      author: data.author || latestMeta.author,
-      readme: data.readme,
-      keywords: data.keywords || latestMeta.keywords || [],
-      dependencies: latestMeta.dependencies,
-      types: latestMeta.types || latestMeta.typings,
-    };
+      return {
+        name: parsed.fullPath,
+        version: latestVersion,
+        description: data.description || latestMeta.description || '',
+        latestVersion,
+        versions: allVersions.length > 0 ? allVersions : [latestVersion],
+        homepage: data.homepage || latestMeta.homepage,
+        repositoryUrl: typeof data.repository === 'string' ? data.repository : data.repository?.url,
+        license: data.license || latestMeta.license || 'MIT',
+        author: data.author || latestMeta.author,
+        readme: data.readme,
+        keywords: data.keywords || latestMeta.keywords || [],
+        dependencies: latestMeta.dependencies,
+        types: latestMeta.types || latestMeta.typings,
+      };
+    }
   } catch (err) {
-    console.error(`Failed to fetch details for ${packageName}:`, err);
-    return null;
+    console.warn('npm registry fetch failed:', err);
   }
+
+  // 3. Graceful fallback so sandbox never fails to open
+  return {
+    name: parsed.fullPath,
+    version: 'latest',
+    description: `Package ${parsed.fullPath}`,
+    latestVersion: 'latest',
+    versions: ['latest'],
+    license: 'MIT',
+    keywords: [],
+  };
 }
 
 export async function fetchPackageReadme(packageName: string, version?: string): Promise<string> {

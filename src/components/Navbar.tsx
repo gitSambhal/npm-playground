@@ -10,8 +10,8 @@ import { APP_VERSION } from '../utils/constants';
 interface NavbarProps {
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
-  activeTab: 'search' | 'editor' | 'templates' | 'history' | 'changelog';
-  setActiveTab: (tab: 'search' | 'editor' | 'templates' | 'history' | 'changelog') => void;
+  activeTab: 'search' | 'editor' | 'templates' | 'history';
+  setActiveTab: (tab: 'search' | 'editor' | 'templates' | 'history') => void;
   activePackageName?: string;
   historyCount: number;
   onOpenChangelog: () => void;
@@ -27,84 +27,79 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenChangelog,
 }) => {
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-xl bg-zinc-950/80 border-b border-zinc-800/80 px-4 lg:px-8 py-3.5 transition-colors">
+    <header className={`sticky top-0 z-50 backdrop-blur-xl border-b px-4 lg:px-6 py-2.5 transition-colors ${darkMode ? 'bg-zinc-950/90 border-zinc-800' : 'bg-white/90 border-slate-200 shadow-sm'}`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         
         {/* Brand Logo & Name */}
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('search')}>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-indigo-600 p-0.5 shadow-lg shadow-red-500/10 flex items-center justify-center">
-            <div className="w-full h-full bg-zinc-950 rounded-[10px] flex items-center justify-center">
-              <Package className="w-5 h-5 text-red-500 animate-pulse" />
+        <div className="flex items-center space-x-2.5 cursor-pointer" onClick={() => setActiveTab('search')}>
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-600 to-indigo-600 p-0.5 shadow-md flex items-center justify-center">
+            <div className={`w-full h-full rounded-[6px] flex items-center justify-center ${darkMode ? 'bg-zinc-950' : 'bg-white'}`}>
+              <Package className="w-4 h-4 text-red-500" />
             </div>
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="font-bold tracking-tight text-white text-base md:text-lg">
-                npmPlay
-              </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                {APP_VERSION}
-              </span>
-            </div>
-            <p className="text-xs text-zinc-400 hidden sm:block">
-              In-Browser NPM Package Sandbox & Code Suggester
-            </p>
+          <div className="flex items-center space-x-2">
+            <span className={`font-bold tracking-tight text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+              npmPlay
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              {APP_VERSION}
+            </span>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="hidden md:flex items-center space-x-1 bg-zinc-900/80 p-1 rounded-xl border border-zinc-800">
+        <nav className={`hidden md:flex items-center space-x-1 p-1 rounded-xl border ${darkMode ? 'bg-zinc-900/80 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
           <button
             onClick={() => setActiveTab('search')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'search'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                : darkMode ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
             }`}
           >
             <Search className="w-3.5 h-3.5" />
-            <span>Search Packages</span>
+            <span>Search</span>
           </button>
 
           <button
             onClick={() => setActiveTab('editor')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'editor'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                : darkMode ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
             }`}
           >
             <Terminal className="w-3.5 h-3.5" />
-            <span>Sandbox Editor</span>
+            <span>Editor</span>
             {activePackageName && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
             )}
           </button>
 
           <button
             onClick={() => setActiveTab('templates')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'templates'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                : darkMode ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Curated Presets</span>
+            <span>Presets</span>
           </button>
 
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'history'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                : darkMode ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-white'
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
             <span>History</span>
             {historyCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] text-zinc-300">
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-slate-200 text-slate-700'}`}>
                 {historyCount}
               </span>
             )}
@@ -112,53 +107,57 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Right Actions */}
-        <div className="flex items-center space-x-2.5">
+        <div className="flex items-center space-x-2">
           <button
             onClick={onOpenChangelog}
-            className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition"
+            className={`hidden sm:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition ${
+              darkMode ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800' : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 shadow-sm'
+            }`}
             title="View Changelog"
           >
             <FileText className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Changelog</span>
+            <span>What's New</span>
           </button>
 
           <button
             onClick={() => setDarkMode(!darkMode)}
-            className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+            className={`p-2 rounded-lg border transition ${
+              darkMode ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800' : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 shadow-sm'
+            }`}
             title="Toggle theme appearance"
           >
-            {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
+            {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
           </button>
         </div>
 
       </div>
 
       {/* Mobile Submenu Navigation */}
-      <div className="flex md:hidden items-center justify-around mt-3 pt-3 border-t border-zinc-800/80 text-xs">
+      <div className={`flex md:hidden items-center justify-around mt-2 pt-2 border-t text-xs ${darkMode ? 'border-zinc-800/80' : 'border-slate-200'}`}>
         <button
           onClick={() => setActiveTab('search')}
-          className={`flex items-center space-x-1 ${activeTab === 'search' ? 'text-indigo-400 font-semibold' : 'text-zinc-400'}`}
+          className={`flex items-center space-x-1 ${activeTab === 'search' ? 'text-indigo-400 font-semibold' : darkMode ? 'text-zinc-400' : 'text-slate-600'}`}
         >
           <Search className="w-3.5 h-3.5" />
           <span>Search</span>
         </button>
         <button
           onClick={() => setActiveTab('editor')}
-          className={`flex items-center space-x-1 ${activeTab === 'editor' ? 'text-indigo-400 font-semibold' : 'text-zinc-400'}`}
+          className={`flex items-center space-x-1 ${activeTab === 'editor' ? 'text-indigo-400 font-semibold' : darkMode ? 'text-zinc-400' : 'text-slate-600'}`}
         >
           <Terminal className="w-3.5 h-3.5" />
           <span>Editor</span>
         </button>
         <button
           onClick={() => setActiveTab('templates')}
-          className={`flex items-center space-x-1 ${activeTab === 'templates' ? 'text-indigo-400 font-semibold' : 'text-zinc-400'}`}
+          className={`flex items-center space-x-1 ${activeTab === 'templates' ? 'text-indigo-400 font-semibold' : darkMode ? 'text-zinc-400' : 'text-slate-600'}`}
         >
           <Sparkles className="w-3.5 h-3.5" />
           <span>Presets</span>
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`flex items-center space-x-1 ${activeTab === 'history' ? 'text-indigo-400 font-semibold' : 'text-zinc-400'}`}
+          className={`flex items-center space-x-1 ${activeTab === 'history' ? 'text-indigo-400 font-semibold' : darkMode ? 'text-zinc-400' : 'text-slate-600'}`}
         >
           <Clock className="w-3.5 h-3.5" />
           <span>History</span>

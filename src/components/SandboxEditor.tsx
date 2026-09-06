@@ -1,5 +1,5 @@
 /**
- * Sandbox Editor View Component with Live Console, Code Editor & Preview Stage
+ * Sandbox Editor View Component with Live Console, Code Editor & Multi-file Support
  * Developer: Suhail Akhtar (https://suhail.top)
  */
 
@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, RotateCcw, Copy, Check, Terminal, BookOpen, Layers, Sparkles, 
   Settings, ExternalLink, Download, FileCode, CheckCircle2, AlertCircle, 
-  Trash2, RefreshCw, Cpu, Database, Eye, Code, ArrowLeft 
+  Trash2, RefreshCw, Cpu, Database, Eye, Code, ArrowLeft, Plus, FileJson, FileText 
 } from 'lucide-react';
 import { CDNProvider, ExportedItem, ConsoleMessage, NpmPackageDetails } from '../types';
 import { CDN_CONFIG } from '../utils/constants';
@@ -19,6 +19,12 @@ import { EDITOR_THEMES } from '../utils/themes';
 import Editor from '@monaco-editor/react';
 import Markdown from 'react-markdown';
 import confetti from 'canvas-confetti';
+
+interface SandboxFile {
+  name: string;
+  content: string;
+  language: string;
+}
 
 interface SandboxEditorProps {
   packageName: string;
@@ -37,9 +43,17 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
   const [pkgDetails, setPkgDetails] = useState<NpmPackageDetails | null>(null);
   const [readme, setReadme] = useState<string>('');
   const [exportsList, setExportsList] = useState<ExportedItem[]>([]);
-  const [code, setCode] = useState<string>('');
+  
+  // Multi-file state
+  const [files, setFiles] = useState<SandboxFile[]>([]);
+  const [activeFileName, setActiveFileName] = useState<string>('index.js');
+  
   const [loadingPkg, setLoadingPkg] = useState<boolean>(true);
   const [loadingIntrospect, setLoadingIntrospect] = useState<boolean>(false);
+  
+  // New file modal state
+  const [newFileName, setNewFileName] = useState<string>('');
+  const [showNewFileDialog, setShowNewFileDialog] = useState<boolean>(false);
   
   // Theme & formatting state
   const [selectedTheme, setSelectedTheme] = useState<string>(darkMode ? 'dracula' : 'github-light');
@@ -47,14 +61,36 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
   useEffect(() => {
     setSelectedTheme(darkMode ? 'dracula' : 'github-light');
   }, [darkMode]);
+
   const [formatting, setFormatting] = useState<boolean>(false);
   const currentTheme = EDITOR_THEMES.find(t => t.id === selectedTheme) || EDITOR_THEMES[0];
 
+  const activeFile = files.find(f => f.name === activeFileName) || files[0] || { name: 'index.js', content: '', language: 'javascript' };
+
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const activeFileNameRef = useRef(activeFileName);
+  activeFileNameRef.current = activeFileName;
+
+  const handleCodeChange = (newContent: string | undefined) => {
+    if (newContent === undefined) return;
+    setFiles(prev => prev.map(f => f.name === activeFileName ? { ...f, content: newContent } : f));
+  };
+
   const handleFormatCode = async () => {
     setFormatting(true);
-    const formatted = await formatJavaScriptCode(code);
-    setCode(formatted);
+    const formatted = await formatJavaScriptCode(activeFile.content);
+    handleCodeChange(formatted);
     setFormatting(false);
+  };
+
+  const handleEditorMount = (editor: any, monaco: any) => {
+    // Add Ctrl+Enter / Cmd+Enter shortcut to run code
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      const val = editor.getValue();
+      const updatedFiles = filesRef.current.map(f => f.name === activeFileNameRef.current ? { ...f, content: val } : f);
+      runCode(updatedFiles);
+    });
   };
 
   const handleEditorBeforeMount = (monaco: any) => {
@@ -117,9 +153,28 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
       setLoadingIntrospect(false);
       setLoadingPkg(false);
 
-      // Generate initial test code
+      // Generate initial test code & files
       const defaultCode = generateDefaultCodeForPackage(packageName, version, exports);
-      setCode(defaultCode);
+      const packageJsonContent = JSON.stringify({
+        name: packageName.replace(/[\/@]/g, '-'),
+        version: '1.0.0',
+        description: details?.description || 'Sandbox test package',
+        main: 'index.js',
+        dependencies: {
+          [packageName]: version
+        }
+      }, null, 2);
+
+      const utilsContent = `// Helper module for testing ${packageName}\nexport function logTestInfo(info) {\n  console.log('[Test Utils]:', info);\n}\n`;
+
+      const initialFiles: SandboxFile[] = [
+        { name: 'index.js', content: defaultCode, language: 'javascript' },
+        { name: 'utils.js', content: utilsContent, language: 'javascript' },
+        { name: 'package.json', content: packageJsonContent, language: 'json' },
+      ];
+
+      setFiles(initialFiles);
+      setActiveFileName('index.js');
 
       // Auto run initial code once loaded
       setTimeout(() => {
@@ -133,20 +188,29 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
     };
   }, [packageName]);
 
-  const runCode = async (codeToRun: string = code) => {
+  const runCode = async (overrideFilesOrCode?: Array<{ name: string; content: string; language: string }> | string) => {
     setExecuting(true);
     setLogs([]);
     setHasError(false);
 
+    let filesToRun = files;
+    if (typeof overrideFilesOrCode === 'string') {
+      filesToRun = files.map(f => f.name === 'index.js' ? { ...f, content: overrideFilesOrCode } : f);
+    } else if (Array.isArray(overrideFilesOrCode)) {
+      filesToRun = overrideFilesOrCode;
+    }
+
+    const currentCode = filesToRun.find(f => f.name === 'index.js')?.content || activeFile.content;
+
     const versionArg = selectedVersion === 'latest' ? undefined : selectedVersion;
-    const result = await executeCodeInBrowser(codeToRun, previewStageRef.current, packageName, versionArg);
+    const result = await executeCodeInBrowser(filesToRun, previewStageRef.current, packageName, versionArg);
 
     setLogs(result.logs);
     setExecutionTime(result.executionTimeMs);
     setHasError(!result.success);
     setExecuting(false);
 
-    onSaveHistory(packageName, codeToRun, result.success);
+    onSaveHistory(packageName, currentCode, result.success);
 
     if (packageName.includes('confetti') && previewStageRef.current) {
       setRightTab('preview');
@@ -154,222 +218,248 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
   };
 
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(code);
+    navigator.clipboard.writeText(activeFile.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleResetCode = () => {
-    const defaultCode = generateDefaultCodeForPackage(packageName, selectedVersion === 'latest' ? undefined : selectedVersion, exportsList);
-    setCode(defaultCode);
-    runCode(defaultCode);
+  const handleInsertSnippet = (snippet: string) => {
+    setActiveFileName('index.js');
+    handleCodeChange(snippet);
+    runCode(snippet);
   };
 
-  const handleInsertSnippet = (snippetCode: string) => {
-    setCode(snippetCode);
-    runCode(snippetCode);
+  const handleCreateFile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFileName.trim()) return;
+    const fileName = newFileName.trim().endsWith('.js') || newFileName.trim().endsWith('.json') || newFileName.trim().endsWith('.md') 
+      ? newFileName.trim() 
+      : `${newFileName.trim()}.js`;
+
+    if (files.some(f => f.name === fileName)) {
+      alert('File already exists.');
+      return;
+    }
+
+    const lang = fileName.endsWith('.json') ? 'json' : fileName.endsWith('.md') ? 'markdown' : 'javascript';
+    const newFile: SandboxFile = {
+      name: fileName,
+      content: lang === 'json' ? '{\n  \n}' : `// ${fileName}\n`,
+      language: lang,
+    };
+
+    setFiles([...files, newFile]);
+    setActiveFileName(fileName);
+    setNewFileName('');
+    setShowNewFileDialog(false);
+  };
+
+  const handleDeleteFile = (fileName: string) => {
+    if (files.length <= 1) {
+      alert('You must keep at least one file.');
+      return;
+    }
+    const updated = files.filter(f => f.name !== fileName);
+    setFiles(updated);
+    if (activeFileName === fileName) {
+      setActiveFileName(updated[0].name);
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className={`min-h-[calc(100vh-50px)] flex flex-col ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-slate-50 text-slate-900'}`}>
       
-      {/* Top Header & Package Info Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl">
+      {/* Top Minimal Toolbar */}
+      <div className={`px-4 py-2.5 border-b flex flex-wrap items-center justify-between gap-3 ${darkMode ? 'bg-zinc-900/80 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="flex items-center space-x-3">
           <button
             onClick={onBackToSearch}
-            className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition"
-            title="Back to Search"
+            className={`p-1.5 rounded-lg border transition flex items-center space-x-1 text-xs font-medium ${
+              darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Back</span>
           </button>
           <div>
-            <div className="flex items-center space-x-2.5">
-              <h2 className="text-lg sm:text-xl font-bold text-white flex items-center space-x-2">
-                <span>{packageName}</span>
+            <div className="flex items-center space-x-2">
+              <h2 className="font-bold text-sm tracking-tight truncate max-w-[200px] sm:max-w-xs">
+                {packageName}
               </h2>
-              <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                v{selectedVersion}
-              </span>
-              {loadingPkg && (
-                <span className="text-xs text-zinc-400 animate-pulse">Loading package info...</span>
-              )}
-            </div>
-            <p className="text-xs text-zinc-400 line-clamp-1 max-w-xl">
-              {pkgDetails?.description || 'Testing in browser sandbox via ES modules.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Version controls & Theme */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Theme Selector */}
-          <div className="flex items-center space-x-1.5 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs">
-            <span className="text-zinc-500">Theme:</span>
-            <select
-              value={selectedTheme}
-              onChange={(e) => setSelectedTheme(e.target.value)}
-              className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
-            >
-              {EDITOR_THEMES.map(t => (
-                <option key={t.id} value={t.id} className="bg-zinc-900">{t.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {pkgDetails?.versions && pkgDetails.versions.length > 0 && (
-            <div className="flex items-center space-x-1.5 bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-800 text-xs">
-              <span className="text-zinc-500">Version:</span>
               <select
                 value={selectedVersion}
                 onChange={(e) => setSelectedVersion(e.target.value)}
-                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer max-w-[120px]"
+                className={`text-[11px] font-mono px-2 py-0.5 rounded border outline-none ${
+                  darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-800'
+                }`}
               >
-                {pkgDetails.versions.slice(0, 25).map((v) => (
-                  <option key={v} value={v} className="bg-zinc-900">{v}</option>
-                ))}
+                {pkgDetails?.versions?.slice(0, 15).map(v => (
+                  <option key={v} value={v}>{v}</option>
+                )) || <option value={selectedVersion}>{selectedVersion}</option>}
               </select>
             </div>
-          )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleFormatCode}
+            disabled={formatting}
+            className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition flex items-center space-x-1 ${
+              darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+            title="Format Code"
+          >
+            <Code className="w-3 h-3 text-indigo-400" />
+            <span className="hidden sm:inline">{formatting ? 'Formatting...' : 'Format'}</span>
+          </button>
+
+          <button
+            onClick={handleCopyCode}
+            className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition flex items-center space-x-1 ${
+              darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-zinc-400" />}
+            <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
+          </button>
 
           <button
             onClick={() => runCode()}
             disabled={executing}
-            className="flex items-center space-x-2 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-lg shadow-emerald-600/20 transition disabled:opacity-50 cursor-pointer"
+            className="px-3.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition flex items-center space-x-1 shadow-md shadow-indigo-600/20"
           >
-            {executing ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4 fill-white" />
-            )}
+            {executing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
             <span>Run Code</span>
           </button>
         </div>
       </div>
 
-      {/* Main Workspace Grid (Left: Code Editor, Right: Output & Introspection Tabs) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Main Split Layout */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0">
         
-        {/* Left Column: Code Editor & Auto-Suggest panel */}
-        <div className={`lg:col-span-7 flex flex-col rounded-2xl border shadow-xl overflow-hidden ${darkMode ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900 shadow-sm'}`}>
+        {/* Left Code Editor Panel with Multi-file Tabs */}
+        <div className={`lg:col-span-7 flex flex-col border-r ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-slate-200 bg-white'}`}>
           
-          {/* Editor Header Toolbar */}
-          <div className={`flex items-center justify-between px-4 py-3 border-b text-xs ${darkMode ? 'bg-zinc-950/60 border-zinc-800 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>
-            <div className="flex items-center space-x-2">
-              <FileCode className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-              <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>sandbox.js</span>
-              <span className={`font-mono ${darkMode ? 'text-zinc-500' : 'text-slate-400'}`}>(ESM)</span>
+          {/* File Tabs Bar */}
+          <div className={`flex items-center justify-between px-3 py-1.5 border-b overflow-x-auto ${darkMode ? 'bg-zinc-900/60 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
+            <div className="flex items-center space-x-1.5">
+              {files.map(file => (
+                <div
+                  key={file.name}
+                  onClick={() => setActiveFileName(file.name)}
+                  className={`group flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-mono cursor-pointer transition ${
+                    activeFileName === file.name
+                      ? darkMode ? 'bg-indigo-600 text-white shadow' : 'bg-white text-indigo-600 shadow-sm font-semibold'
+                      : darkMode ? 'text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200' : 'text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {file.name.endsWith('.json') ? <FileJson className="w-3.5 h-3.5 text-amber-400" /> : <FileCode className="w-3.5 h-3.5 text-indigo-400" />}
+                  <span>{file.name}</span>
+                  {files.length > 1 && file.name !== 'index.js' && file.name !== 'package.json' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteFile(file.name);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 hover:text-red-400 ml-1 text-xs"
+                      title="Close file"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
 
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleFormatCode}
-                disabled={formatting}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg transition disabled:opacity-50 ${
-                  darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 shadow-sm'
-                }`}
-                title="Format code with Prettier"
-              >
-                {formatting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Code className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />}
-                <span className="hidden sm:inline">Format</span>
-              </button>
-
-              <button
-                onClick={handleResetCode}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg transition ${
-                  darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 shadow-sm'
-                }`}
-                title="Reset to default template"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Reset</span>
-              </button>
-
-              <button
-                onClick={handleCopyCode}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg transition ${
-                  darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 shadow-sm'
-                }`}
-                title="Copy code"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
-              </button>
-            </div>
+            <button
+              onClick={() => setShowNewFileDialog(true)}
+              className={`p-1 rounded border text-xs flex items-center space-x-1 transition ${
+                darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 shadow-sm'
+              }`}
+              title="New File"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="text-[10px] hidden sm:inline">New File</span>
+            </button>
           </div>
 
-          {/* Monaco Code Editor */}
-          <div 
-            className="relative flex-1 min-h-[420px] overflow-hidden"
-            style={{ backgroundColor: currentTheme.bg }}
-          >
+          {/* New File Modal Dialog */}
+          {showNewFileDialog && (
+            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+              <form onSubmit={handleCreateFile} className={`w-full max-w-md p-6 rounded-2xl border space-y-4 shadow-2xl ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+                <h3 className="font-bold text-base">Create New File</h3>
+                <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
+                  Enter file name (e.g., <code className="font-mono text-indigo-400">helpers.js</code>, <code className="font-mono text-indigo-400">config.json</code>):
+                </p>
+                <input
+                  type="text"
+                  value={newFileName}
+                  onChange={(e) => setNewFileName(e.target.value)}
+                  placeholder="e.g. helpers.js"
+                  autoFocus
+                  className={`w-full px-4 py-2.5 rounded-xl border text-sm font-mono outline-none ${
+                    darkMode ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
+                  }`}
+                />
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewFileDialog(false)}
+                    className={`px-4 py-2 rounded-xl text-xs font-medium border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow"
+                  >
+                    Create
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Monaco Editor Instance */}
+          <div className="flex-1 min-h-[420px]">
             <Editor
               height="100%"
-              defaultLanguage="javascript"
-              language="javascript"
+              language={activeFile.language}
+              theme={selectedTheme}
+              value={activeFile.content}
+              onChange={handleCodeChange}
+              onMount={handleEditorMount}
               beforeMount={handleEditorBeforeMount}
-              theme={currentTheme.id}
-              value={code}
-              onChange={(value) => setCode(value || '')}
               options={{
-                minimap: { enabled: false },
-                fontSize: 14,
+                minimap: { enabled: true, scale: 0.75, showSlider: 'always' },
+                fontSize: 13,
                 fontFamily: 'JetBrains Mono, Fira Code, Menlo, Monaco, Consolas, monospace',
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
                 tabSize: 2,
-                wordWrap: 'on',
                 lineNumbers: 'on',
                 cursorBlinking: 'smooth',
                 smoothScrolling: true,
+                folding: true,
+                bracketPairColorization: { enabled: true },
+                formatOnPaste: true,
+                formatOnType: true,
               }}
             />
           </div>
-
-          {/* Quick AI/Auto-Suggest snippets bar */}
-          <div className={`p-3 border-t flex items-center justify-between text-xs ${darkMode ? 'bg-zinc-950/80 border-zinc-800 text-zinc-400' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-              <span>Auto-Suggest Exports ({exportsList.length}):</span>
-            </div>
-            <div className="flex items-center space-x-1.5 overflow-x-auto max-w-[65%] py-0.5">
-              {loadingIntrospect ? (
-                <span className="text-zinc-500 text-[11px] animate-pulse">Introspecting exports...</span>
-              ) : exportsList.length === 0 ? (
-                <span className="text-zinc-500 text-[11px]">No named exports found</span>
-              ) : (
-                exportsList.slice(0, 8).map((exp) => (
-                  <button
-                    key={exp.name}
-                    onClick={() => {
-                      const snippet = generateFunctionSnippet(packageName, exp, selectedVersion === 'latest' ? undefined : selectedVersion);
-                      handleInsertSnippet(snippet);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg font-mono text-[11px] transition whitespace-nowrap border ${
-                      darkMode 
-                        ? 'bg-zinc-800 hover:bg-indigo-600 hover:text-white text-zinc-300 border-zinc-700' 
-                        : 'bg-white hover:bg-indigo-600 hover:text-white text-slate-700 border-slate-200 shadow-sm'
-                    }`}
-                    title={`Test ${exp.name}`}
-                  >
-                    +{exp.name}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-
         </div>
 
-        {/* Right Column: Interactive Console & Preview / Introspection Tabs */}
-        <div className={`lg:col-span-5 flex flex-col rounded-2xl border shadow-xl overflow-hidden ${darkMode ? 'bg-zinc-900 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900 shadow-sm'}`}>
+        {/* Right Output Console & Details Panel */}
+        <div className={`lg:col-span-5 flex flex-col ${darkMode ? 'bg-zinc-950' : 'bg-white'}`}>
           
-          {/* Tabs Bar */}
-          <div className={`flex items-center justify-between px-3 py-2.5 border-b text-xs ${darkMode ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
-            <div className="flex items-center space-x-1">
+          {/* Output Tabs Header */}
+          <div className={`flex items-center justify-between px-4 py-2 border-b text-xs font-medium overflow-x-auto ${darkMode ? 'bg-zinc-900/60 border-zinc-800 text-zinc-400' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+            <div className="flex items-center space-x-2">
               <button
                 onClick={() => setRightTab('console')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg font-medium transition ${
                   rightTab === 'console' 
                     ? 'bg-indigo-600 text-white shadow' 
                     : darkMode ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
@@ -378,7 +468,7 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
                 <Terminal className="w-3.5 h-3.5" />
                 <span>Console</span>
                 {logs.length > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${hasError ? 'bg-red-500 text-white' : darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-slate-200 text-slate-700'}`}>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${hasError ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>
                     {logs.length}
                   </span>
                 )}
@@ -386,19 +476,19 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
 
               <button
                 onClick={() => setRightTab('preview')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg font-medium transition ${
                   rightTab === 'preview' 
                     ? 'bg-indigo-600 text-white shadow' 
                     : darkMode ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>DOM Preview</span>
+                <span>Preview</span>
               </button>
 
               <button
                 onClick={() => setRightTab('exports')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg font-medium transition ${
                   rightTab === 'exports' 
                     ? 'bg-indigo-600 text-white shadow' 
                     : darkMode ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
@@ -410,7 +500,7 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
 
               <button
                 onClick={() => setRightTab('readme')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg font-medium transition ${
                   rightTab === 'readme' 
                     ? 'bg-indigo-600 text-white shadow' 
                     : darkMode ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
