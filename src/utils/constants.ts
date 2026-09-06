@@ -121,9 +121,9 @@ const UserSchema = z.object({
 
 // Test valid user
 const validPayload = {
-  username: 'suhail_ak',
-  email: 'suhailak786@gmail.com',
-  age: 26,
+  username: 'alex_dev',
+  email: 'alex@example.com',
+  age: 28,
 };
 const parsed = UserSchema.safeParse(validPayload);
 console.log('Valid check passed:', parsed.success, parsed.data);
@@ -305,6 +305,59 @@ const end = Date.now() + 1000;
   if (Date.now() < end) requestAnimationFrame(frame);
 }());
 console.log('Fireworks triggered!');`
+      }
+    ]
+  },
+  {
+    name: '@neoconfetti/react',
+    category: 'Visual & UI',
+    description: 'A lightweight React confetti component using CSS particles.',
+    defaultCode: `// Testing @neoconfetti/react component
+import React, { useState } from 'react';
+import { Confetti } from 'PKG_IMPORT';
+
+export default function App() {
+  const [fired, setFired] = useState(false);
+
+  return (
+    <div style={{ fontFamily: 'sans-serif', textAlign: 'center', padding: '40px' }}>
+      <h1>🎉 @neoconfetti/react Playground</h1>
+      <p>Click the button below to trigger celebratory confetti!</p>
+      
+      <button 
+        onClick={() => setFired(prev => !prev)}
+        style={{
+          background: '#6366f1',
+          color: '#ffffff',
+          border: 'none',
+          padding: '12px 24px',
+          borderRadius: '8px',
+          fontSize: '16px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+        }}
+      >
+        {fired ? 'Reset Confetti 🎉' : 'Fire Confetti! 🚀'}
+      </button>
+
+      {fired && (
+        <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center' }}>
+          <Confetti particleCount={150} particleSize={12} duration={4000} />
+        </div>
+      )}
+    </div>
+  );
+}
+`,
+    snippets: [
+      {
+        title: 'Basic Confetti Trigger',
+        description: 'Trigger NeoConfetti component with custom particle count',
+        code: `import { Confetti } from 'PKG_IMPORT';
+// Renders confetti animation
+console.log('Rendering <Confetti /> component...');
+        `
       }
     ]
   },

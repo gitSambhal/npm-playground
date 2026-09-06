@@ -65,36 +65,48 @@ export function parsePackagePath(input: string): ParsedPackagePath {
   return { fullPath: trimmed, basePackage: trimmed };
 }
 
+export function parseNpmUrlPath(raw: string): { packageName: string; version?: string } {
+  if (!raw) return { packageName: 'lodash-es' };
+  let clean = raw.replace(/^#\/?/, '').replace(/^\/+/, '').trim();
+  if (clean.startsWith('package/')) {
+    clean = clean.substring(8);
+  }
+
+  // e.g. lodash/v/4.17.21 or @scope/foo/v/1.0.0
+  const vMatch = clean.match(/^(.*?)\/v\/([^\/]+)(?:\/|$)/);
+  if (vMatch) {
+    return { packageName: vMatch[1], version: vMatch[2] };
+  }
+
+  // e.g. lodash@4.17.21 or @scope/foo@1.2.3
+  if (clean.startsWith('@')) {
+    const secondAtIndex = clean.indexOf('@', 1);
+    if (secondAtIndex > 0) {
+      return {
+        packageName: clean.substring(0, secondAtIndex),
+        version: clean.substring(secondAtIndex + 1),
+      };
+    }
+  } else {
+    const atIndex = clean.indexOf('@');
+    if (atIndex > 0) {
+      return {
+        packageName: clean.substring(0, atIndex),
+        version: clean.substring(atIndex + 1),
+      };
+    }
+  }
+
+  return { packageName: clean };
+}
+
 export async function fetchPackageDetails(packageName: string): Promise<NpmPackageDetails | null> {
   if (!packageName.trim()) return null;
   const parsed = parsePackagePath(packageName);
   const basePkg = parsed.basePackage;
   if (!basePkg) return null;
 
-  // 1. Try unpkg package.json first
-  try {
-    const unpkgRes = await fetch(`https://unpkg.com/${basePkg}/package.json`);
-    if (unpkgRes.ok) {
-      const unpkgData = await unpkgRes.json();
-      return {
-        name: parsed.fullPath,
-        version: unpkgData.version || 'latest',
-        description: unpkgData.description || '',
-        latestVersion: unpkgData.version || 'latest',
-        versions: unpkgData.version ? [unpkgData.version] : ['latest'],
-        homepage: unpkgData.homepage,
-        repositoryUrl: typeof unpkgData.repository === 'string' ? unpkgData.repository : unpkgData.repository?.url,
-        license: unpkgData.license,
-        author: unpkgData.author,
-        keywords: unpkgData.keywords || [],
-        dependencies: unpkgData.dependencies,
-      };
-    }
-  } catch (e) {
-    console.warn('unpkg package.json fallback failed:', e);
-  }
-
-  // 2. Try npm registry
+  // 1. Try npm registry first to get all available versions
   try {
     const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(basePkg)}`);
     if (res.ok) {
@@ -121,6 +133,29 @@ export async function fetchPackageDetails(packageName: string): Promise<NpmPacka
     }
   } catch (err) {
     console.warn('npm registry fetch failed:', err);
+  }
+
+  // 2. Fallback to unpkg package.json
+  try {
+    const unpkgRes = await fetch(`https://unpkg.com/${basePkg}/package.json`);
+    if (unpkgRes.ok) {
+      const unpkgData = await unpkgRes.json();
+      return {
+        name: parsed.fullPath,
+        version: unpkgData.version || 'latest',
+        description: unpkgData.description || '',
+        latestVersion: unpkgData.version || 'latest',
+        versions: unpkgData.version ? [unpkgData.version] : ['latest'],
+        homepage: unpkgData.homepage,
+        repositoryUrl: typeof unpkgData.repository === 'string' ? unpkgData.repository : unpkgData.repository?.url,
+        license: unpkgData.license,
+        author: unpkgData.author,
+        keywords: unpkgData.keywords || [],
+        dependencies: unpkgData.dependencies,
+      };
+    }
+  } catch (e) {
+    console.warn('unpkg package.json fallback failed:', e);
   }
 
   // 3. Graceful fallback so sandbox never fails to open

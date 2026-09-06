@@ -12,12 +12,14 @@ import { HistoryView, HistoryItem } from './components/HistoryView';
 import { ChangelogModal } from './components/ChangelogModal';
 import { PopularPackagePreset } from './utils/constants';
 import { DEVELOPER_NAME, DEVELOPER_WEBSITE, APP_VERSION } from './utils/constants';
+import { parseNpmUrlPath } from './utils/npmRegistry';
 import { Sparkles, Package, ExternalLink } from 'lucide-react';
 
 export default function App() {
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'search' | 'editor' | 'templates' | 'history'>('search');
   const [activePackageName, setActivePackageName] = useState<string>('lodash-es');
+  const [activePackageVersion, setActivePackageVersion] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [changelogOpen, setChangelogOpen] = useState<boolean>(false);
 
@@ -25,11 +27,17 @@ export default function App() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem('npmPlay_history');
-      if (saved) {
-        setHistory(JSON.parse(saved));
+      if (saved && saved !== 'undefined' && saved !== 'null' && saved.trim() !== '') {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setHistory(parsed);
+        } else {
+          localStorage.removeItem('npmPlay_history');
+        }
       }
     } catch (e) {
-      console.warn('Failed to load history', e);
+      console.warn('Failed to load history, clearing corrupted storage', e);
+      localStorage.removeItem('npmPlay_history');
     }
   }, []);
 
@@ -41,19 +49,24 @@ export default function App() {
       const queryPkg = searchParams.get('pkg') || searchParams.get('package') || searchParams.get('p');
       const pathname = window.location.pathname.replace(/^\/+/, '').trim();
 
-      let targetPkg = '';
+      let rawTarget = '';
       if (queryPkg) {
-        targetPkg = queryPkg;
+        rawTarget = queryPkg;
       } else if (hash && !hash.startsWith('tabs/')) {
-        targetPkg = hash;
+        rawTarget = hash;
       } else if (pathname && pathname !== '' && !pathname.includes('index.html')) {
-        targetPkg = pathname;
+        rawTarget = pathname;
       }
 
-      if (targetPkg) {
-        targetPkg = targetPkg.replace(/^(pkg|package)\//, '');
-        setActivePackageName(targetPkg);
-        setActiveTab('editor');
+      if (rawTarget) {
+        const parsed = parseNpmUrlPath(rawTarget);
+        if (parsed.packageName) {
+          setActivePackageName(parsed.packageName);
+          if (parsed.version) {
+            setActivePackageVersion(parsed.version);
+          }
+          setActiveTab('editor');
+        }
       }
     };
 
@@ -62,12 +75,13 @@ export default function App() {
     return () => window.removeEventListener('hashchange', parseUrl);
   }, []);
 
-  // Update hash when active package or tab changes to keep URL in sync for Netlify hosting
+  // Update hash when active package, version or tab changes to keep URL in sync
   useEffect(() => {
     if (activeTab === 'editor' && activePackageName) {
-      window.location.hash = `#/${activePackageName}`;
+      const verSuffix = activePackageVersion && activePackageVersion !== 'latest' ? `/v/${activePackageVersion}` : '';
+      window.location.hash = `#/${activePackageName}${verSuffix}`;
     }
-  }, [activePackageName, activeTab]);
+  }, [activePackageName, activePackageVersion, activeTab]);
 
   const handleSaveHistory = (packageName: string, code: string, success: boolean) => {
     const newItem: HistoryItem = {
@@ -88,11 +102,13 @@ export default function App() {
 
   const handleSelectPackage = (packageName: string) => {
     setActivePackageName(packageName);
+    setActivePackageVersion(undefined);
     setActiveTab('editor');
   };
 
   const handleOpenPreset = (preset: PopularPackagePreset) => {
     setActivePackageName(preset.name);
+    setActivePackageVersion(undefined);
     setActiveTab('editor');
   };
 
@@ -128,9 +144,11 @@ export default function App() {
         {activeTab === 'editor' && (
           <SandboxEditor
             packageName={activePackageName}
+            initialVersion={activePackageVersion}
             darkMode={darkMode}
             onBackToSearch={() => setActiveTab('search')}
             onSaveHistory={handleSaveHistory}
+            onVersionChange={(v) => setActivePackageVersion(v)}
           />
         )}
 

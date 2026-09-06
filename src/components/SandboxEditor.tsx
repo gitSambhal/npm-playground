@@ -28,32 +28,31 @@ interface SandboxFile {
 
 interface SandboxEditorProps {
   packageName: string;
+  initialVersion?: string;
   darkMode: boolean;
   onBackToSearch: () => void;
   onSaveHistory: (pkg: string, code: string, success: boolean) => void;
+  onVersionChange?: (version: string) => void;
 }
 
 export const SandboxEditor: React.FC<SandboxEditorProps> = ({
   packageName,
+  initialVersion,
   darkMode,
   onBackToSearch,
   onSaveHistory,
+  onVersionChange,
 }) => {
-  const [selectedVersion, setSelectedVersion] = useState<string>('latest');
+  const [selectedVersion, setSelectedVersion] = useState<string>(initialVersion || 'latest');
   const [pkgDetails, setPkgDetails] = useState<NpmPackageDetails | null>(null);
   const [readme, setReadme] = useState<string>('');
   const [exportsList, setExportsList] = useState<ExportedItem[]>([]);
   
-  // Multi-file state
-  const [files, setFiles] = useState<SandboxFile[]>([]);
-  const [activeFileName, setActiveFileName] = useState<string>('index.js');
+  // Single file code state for quick testing
+  const [code, setCode] = useState<string>('');
   
   const [loadingPkg, setLoadingPkg] = useState<boolean>(true);
   const [loadingIntrospect, setLoadingIntrospect] = useState<boolean>(false);
-  
-  // New file modal state
-  const [newFileName, setNewFileName] = useState<string>('');
-  const [showNewFileDialog, setShowNewFileDialog] = useState<boolean>(false);
   
   // Theme & formatting state
   const [selectedTheme, setSelectedTheme] = useState<string>(darkMode ? 'dracula' : 'github-light');
@@ -65,22 +64,15 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
   const [formatting, setFormatting] = useState<boolean>(false);
   const currentTheme = EDITOR_THEMES.find(t => t.id === selectedTheme) || EDITOR_THEMES[0];
 
-  const activeFile = files.find(f => f.name === activeFileName) || files[0] || { name: 'index.js', content: '', language: 'javascript' };
-
-  const filesRef = useRef(files);
-  filesRef.current = files;
-  const activeFileNameRef = useRef(activeFileName);
-  activeFileNameRef.current = activeFileName;
-
   const handleCodeChange = (newContent: string | undefined) => {
     if (newContent === undefined) return;
-    setFiles(prev => prev.map(f => f.name === activeFileName ? { ...f, content: newContent } : f));
+    setCode(newContent);
   };
 
   const handleFormatCode = async () => {
     setFormatting(true);
-    const formatted = await formatJavaScriptCode(activeFile.content);
-    handleCodeChange(formatted);
+    const formatted = await formatJavaScriptCode(code);
+    setCode(formatted);
     setFormatting(false);
   };
 
@@ -88,8 +80,7 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
     // Add Ctrl+Enter / Cmd+Enter shortcut to run code
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       const val = editor.getValue();
-      const updatedFiles = filesRef.current.map(f => f.name === activeFileNameRef.current ? { ...f, content: val } : f);
-      runCode(updatedFiles);
+      runCode(val);
     });
   };
 
@@ -137,7 +128,7 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
       if (!isMounted) return;
       
       setPkgDetails(details);
-      const version = details?.latestVersion || 'latest';
+      const version = initialVersion || details?.latestVersion || 'latest';
       setSelectedVersion(version);
 
       // Fetch README
@@ -153,28 +144,9 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
       setLoadingIntrospect(false);
       setLoadingPkg(false);
 
-      // Generate initial test code & files
+      // Generate initial test code
       const defaultCode = generateDefaultCodeForPackage(packageName, version, exports);
-      const packageJsonContent = JSON.stringify({
-        name: packageName.replace(/[\/@]/g, '-'),
-        version: '1.0.0',
-        description: details?.description || 'Sandbox test package',
-        main: 'index.js',
-        dependencies: {
-          [packageName]: version
-        }
-      }, null, 2);
-
-      const utilsContent = `// Helper module for testing ${packageName}\nexport function logTestInfo(info) {\n  console.log('[Test Utils]:', info);\n}\n`;
-
-      const initialFiles: SandboxFile[] = [
-        { name: 'index.js', content: defaultCode, language: 'javascript' },
-        { name: 'utils.js', content: utilsContent, language: 'javascript' },
-        { name: 'package.json', content: packageJsonContent, language: 'json' },
-      ];
-
-      setFiles(initialFiles);
-      setActiveFileName('index.js');
+      setCode(defaultCode);
 
       // Auto run initial code once loaded
       setTimeout(() => {
@@ -186,84 +158,52 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [packageName]);
+  }, [packageName, initialVersion]);
 
-  const runCode = async (overrideFilesOrCode?: Array<{ name: string; content: string; language: string }> | string) => {
+  const handleVersionChange = async (newVersion: string) => {
+    setSelectedVersion(newVersion);
+    if (onVersionChange) {
+      onVersionChange(newVersion);
+    }
+    setLoadingIntrospect(true);
+    const readmeMd = await fetchPackageReadme(packageName, newVersion);
+    setReadme(readmeMd);
+
+    const introspectRes = await introspectModuleExports(packageName, newVersion);
+    setExportsList(introspectRes.exports);
+    setLoadingIntrospect(false);
+  };
+
+  const runCode = async (overrideCode?: string) => {
     setExecuting(true);
     setLogs([]);
     setHasError(false);
 
-    let filesToRun = files;
-    if (typeof overrideFilesOrCode === 'string') {
-      filesToRun = files.map(f => f.name === 'index.js' ? { ...f, content: overrideFilesOrCode } : f);
-    } else if (Array.isArray(overrideFilesOrCode)) {
-      filesToRun = overrideFilesOrCode;
-    }
-
-    const currentCode = filesToRun.find(f => f.name === 'index.js')?.content || activeFile.content;
-
+    const codeToRun = overrideCode !== undefined ? overrideCode : code;
     const versionArg = selectedVersion === 'latest' ? undefined : selectedVersion;
-    const result = await executeCodeInBrowser(filesToRun, previewStageRef.current, packageName, versionArg);
+    const result = await executeCodeInBrowser(codeToRun, previewStageRef.current, packageName, versionArg);
 
     setLogs(result.logs);
     setExecutionTime(result.executionTimeMs);
     setHasError(!result.success);
     setExecuting(false);
 
-    onSaveHistory(packageName, currentCode, result.success);
+    onSaveHistory(packageName, codeToRun, result.success);
 
-    if (packageName.includes('confetti') && previewStageRef.current) {
+    if ((packageName.includes('confetti') || packageName.includes('react')) && previewStageRef.current) {
       setRightTab('preview');
     }
   };
 
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(activeFile.content);
+    navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleInsertSnippet = (snippet: string) => {
-    setActiveFileName('index.js');
-    handleCodeChange(snippet);
+    setCode(snippet);
     runCode(snippet);
-  };
-
-  const handleCreateFile = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFileName.trim()) return;
-    const fileName = newFileName.trim().endsWith('.js') || newFileName.trim().endsWith('.json') || newFileName.trim().endsWith('.md') 
-      ? newFileName.trim() 
-      : `${newFileName.trim()}.js`;
-
-    if (files.some(f => f.name === fileName)) {
-      alert('File already exists.');
-      return;
-    }
-
-    const lang = fileName.endsWith('.json') ? 'json' : fileName.endsWith('.md') ? 'markdown' : 'javascript';
-    const newFile: SandboxFile = {
-      name: fileName,
-      content: lang === 'json' ? '{\n  \n}' : `// ${fileName}\n`,
-      language: lang,
-    };
-
-    setFiles([...files, newFile]);
-    setActiveFileName(fileName);
-    setNewFileName('');
-    setShowNewFileDialog(false);
-  };
-
-  const handleDeleteFile = (fileName: string) => {
-    if (files.length <= 1) {
-      alert('You must keep at least one file.');
-      return;
-    }
-    const updated = files.filter(f => f.name !== fileName);
-    setFiles(updated);
-    if (activeFileName === fileName) {
-      setActiveFileName(updated[0].name);
-    }
   };
 
   return (
@@ -288,15 +228,20 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
               </h2>
               <select
                 value={selectedVersion}
-                onChange={(e) => setSelectedVersion(e.target.value)}
+                onChange={(e) => handleVersionChange(e.target.value)}
                 className={`text-[11px] font-mono px-2 py-0.5 rounded border outline-none ${
                   darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-800'
                 }`}
               >
-                {pkgDetails?.versions?.slice(0, 15).map(v => (
+                {pkgDetails?.versions?.map(v => (
                   <option key={v} value={v}>{v}</option>
                 )) || <option value={selectedVersion}>{selectedVersion}</option>}
               </select>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
+                darkMode ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}>
+                v{selectedVersion} Loaded
+              </span>
             </div>
           </div>
         </div>
@@ -342,93 +287,22 @@ export const SandboxEditor: React.FC<SandboxEditorProps> = ({
         {/* Left Code Editor Panel with Multi-file Tabs */}
         <div className={`lg:col-span-7 flex flex-col border-r ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-slate-200 bg-white'}`}>
           
-          {/* File Tabs Bar */}
-          <div className={`flex items-center justify-between px-3 py-1.5 border-b overflow-x-auto ${darkMode ? 'bg-zinc-900/60 border-zinc-800' : 'bg-slate-100 border-slate-200'}`}>
-            <div className="flex items-center space-x-1.5">
-              {files.map(file => (
-                <div
-                  key={file.name}
-                  onClick={() => setActiveFileName(file.name)}
-                  className={`group flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-mono cursor-pointer transition ${
-                    activeFileName === file.name
-                      ? darkMode ? 'bg-indigo-600 text-white shadow' : 'bg-white text-indigo-600 shadow-sm font-semibold'
-                      : darkMode ? 'text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200' : 'text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {file.name.endsWith('.json') ? <FileJson className="w-3.5 h-3.5 text-amber-400" /> : <FileCode className="w-3.5 h-3.5 text-indigo-400" />}
-                  <span>{file.name}</span>
-                  {files.length > 1 && file.name !== 'index.js' && file.name !== 'package.json' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteFile(file.name);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:text-red-400 ml-1 text-xs"
-                      title="Close file"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
+          {/* Single File Header Bar */}
+          <div className={`flex items-center justify-between px-3 py-1.5 border-b ${darkMode ? 'bg-zinc-900/60 border-zinc-800 text-zinc-300' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>
+            <div className="flex items-center space-x-1.5 text-xs font-mono font-semibold">
+              <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+              <span>index.js (Single File Quick Test)</span>
             </div>
-
-            <button
-              onClick={() => setShowNewFileDialog(true)}
-              className={`p-1 rounded border text-xs flex items-center space-x-1 transition ${
-                darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 shadow-sm'
-              }`}
-              title="New File"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="text-[10px] hidden sm:inline">New File</span>
-            </button>
+            <div className="text-[11px] opacity-70">Press Ctrl+Enter to Run</div>
           </div>
-
-          {/* New File Modal Dialog */}
-          {showNewFileDialog && (
-            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <form onSubmit={handleCreateFile} className={`w-full max-w-md p-6 rounded-2xl border space-y-4 shadow-2xl ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
-                <h3 className="font-bold text-base">Create New File</h3>
-                <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                  Enter file name (e.g., <code className="font-mono text-indigo-400">helpers.js</code>, <code className="font-mono text-indigo-400">config.json</code>):
-                </p>
-                <input
-                  type="text"
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder="e.g. helpers.js"
-                  autoFocus
-                  className={`w-full px-4 py-2.5 rounded-xl border text-sm font-mono outline-none ${
-                    darkMode ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-indigo-500'
-                  }`}
-                />
-                <div className="flex justify-end space-x-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowNewFileDialog(false)}
-                    className={`px-4 py-2 rounded-xl text-xs font-medium border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-xl text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow"
-                  >
-                    Create
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
 
           {/* Monaco Editor Instance */}
           <div className="flex-1 min-h-[420px]">
             <Editor
               height="100%"
-              language={activeFile.language}
+              language="javascript"
               theme={selectedTheme}
-              value={activeFile.content}
+              value={code}
               onChange={handleCodeChange}
               onMount={handleEditorMount}
               beforeMount={handleEditorBeforeMount}
